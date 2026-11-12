@@ -94,14 +94,14 @@ def callbacks(call):
             "ليس ممثلاً رسمياً للمنصة ولا يجمع كلمات المرور أو رموز التحقق."
         ),
     }
+    if call.data == "home":
+        bot.answer_callback_query(call.id)
+        send_home(call.message.chat.id)
+        return
     text = pages.get(call.data)
     if text:
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="home"))
-        if call.data == "home":
-            bot.answer_callback_query(call.id)
-            send_home(call.message.chat.id)
-            return
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, text, reply_markup=markup)
     else:
