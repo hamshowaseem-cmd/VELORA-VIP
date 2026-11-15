@@ -59,9 +59,11 @@ def init_db():
             )
         """)
 
-def main_menu():
+def main_menu(user_id=None):
     # أزرار تيليغرام الأصلية؛ لا تسمح واجهة Bot API بتغيير ألوان الأزرار.
     kb = types.InlineKeyboardMarkup(row_width=2)
+    if user_id == ADMIN_ID:
+        kb.add(types.InlineKeyboardButton("🛠️ لوحة الإدارة", callback_data="admin:home"))
     kb.row(
         types.InlineKeyboardButton("⚡ معلومات الحساب", callback_data="account_info"),
         types.InlineKeyboardButton("💥 جميع العروض", callback_data="offers")
@@ -111,6 +113,108 @@ def currency_menu():
 def safe(value):
     return html.escape(str(value or ""))
 
+def admin_panel_markup():
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("📊 ملخص الكاشيرة", callback_data="admin:stats"),
+        types.InlineKeyboardButton("💳 طلبات الإيداع والسحب المعلقة", callback_data="admin:pending"),
+        types.InlineKeyboardButton("👤 طلبات تسجيل اللاعبين المعلقة", callback_data="admin:registrations"),
+        types.InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="home")
+    )
+    return kb
+
+def send_admin_panel(chat_id):
+    bot.send_message(
+        chat_id,
+        "🛠️ <b>لوحة إدارة VELORA-VIP</b>\nاختر القسم الذي تريد متابعته.\n\n"
+        "تنبيه: هذه اللوحة تدير الطلبات والسجلات فقط، ولا تنفّذ تحويلات مالية إلى iChancy.",
+        reply_markup=admin_panel_markup()
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admin:"))
+def admin_actions(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "هذا القسم مخصص للإدارة فقط.", show_alert=True)
+        return
+    action = call.data.split(":", 1)[1]
+    bot.answer_callback_query(call.id)
+    if action == "home":
+        send_admin_panel(call.message.chat.id)
+        return
+    if action == "stats":
+        with connect_db() as conn:
+            request_counts = conn.execute(
+                "SELECT kind, status, COUNT(*) AS n FROM requests GROUP BY kind, status"
+            ).fetchall()
+            registration_counts = conn.execute(
+                "SELECT status, COUNT(*) AS n FROM player_registrations GROUP BY status"
+            ).fetchall()
+        lines = ["📊 <b>ملخص الكاشيرة</b>", "", "<b>طلبات الإيداع والسحب:</b>"]
+        for row in request_counts:
+            kind = "إيداع" if row["kind"] == "deposit" else "سحب"
+            status = {"pending": "معلقة", "approved": "مقبولة", "rejected": "مرفوضة"}.get(row["status"], row["status"])
+            lines.append(f"{kind} — {status}: {row['n']}")
+        lines.append("")
+        lines.append("<b>تسجيل اللاعبين:</b>")
+        for row in registration_counts:
+            status = {"pending": "قيد المراجعة", "approved": "مقبولة مبدئياً", "rejected": "مرفوضة"}.get(row["status"], row["status"])
+            lines.append(f"{status}: {row['n']}")
+        if not request_counts:
+            lines.append("لا توجد طلبات مالية بعد.")
+        if not registration_counts:
+            lines.append("لا توجد طلبات تسجيل بعد.")
+        lines.extend(["", "لا يتضمن هذا الملخص رصيد محفظة iChancy الفعلي."])
+        bot.send_message(call.message.chat.id, "\n".join(lines), reply_markup=admin_panel_markup())
+        return
+    if action == "pending":
+        with connect_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM requests WHERE status='pending' ORDER BY id DESC LIMIT 10"
+            ).fetchall()
+        if not rows:
+            bot.send_message(call.message.chat.id, "لا توجد طلبات إيداع أو سحب معلقة.", reply_markup=admin_panel_markup())
+            return
+        bot.send_message(call.message.chat.id, "💳 <b>الطلبات المالية المعلقة</b>")
+        for row in rows:
+            kind = "إيداع" if row["kind"] == "deposit" else "سحب"
+            currency = "دولار" if row["currency"] == "USD" else "ليرة سورية"
+            text = (
+                f"طلب #{row['id']} — {kind}\n"
+                f"العميل: {safe(row['full_name'])}\n"
+                f"المبلغ: {safe(row['amount'])} {currency}\n"
+                f"ملاحظة: {safe(row['note']) if row['note'] else 'لا توجد'}\n"
+                "الموافقة هنا تغيّر حالة الطلب فقط ولا تحوّل الأموال."
+            )
+            kb = types.InlineKeyboardMarkup(row_width=2)
+            kb.add(
+                types.InlineKeyboardButton("✅ قبول الطلب", callback_data=f"decision:approved:{row['id']}"),
+                types.InlineKeyboardButton("❌ رفض الطلب", callback_data=f"decision:rejected:{row['id']}")
+            )
+            bot.send_message(call.message.chat.id, text, reply_markup=kb)
+        return
+    if action == "registrations":
+        with connect_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM player_registrations WHERE status='pending' ORDER BY id DESC LIMIT 10"
+            ).fetchall()
+        if not rows:
+            bot.send_message(call.message.chat.id, "لا توجد طلبات تسجيل معلقة.", reply_markup=admin_panel_markup())
+            return
+        bot.send_message(call.message.chat.id, "👤 <b>طلبات تسجيل اللاعبين المعلقة</b>")
+        for row in rows:
+            text = (
+                f"طلب تسجيل #{row['id']}\n"
+                f"الاسم: {safe(row['first_name'])} {safe(row['last_name'])}\n"
+                f"اسم المستخدم: <code>{safe(row['desired_username'])}</code>\n"
+                "القرار لا ينشئ حساب iChancy تلقائياً."
+            )
+            kb = types.InlineKeyboardMarkup(row_width=2)
+            kb.add(
+                types.InlineKeyboardButton("✅ قبول الطلب", callback_data=f"player_decision:approved:{row['id']}"),
+                types.InlineKeyboardButton("❌ رفض الطلب", callback_data=f"player_decision:rejected:{row['id']}")
+            )
+            bot.send_message(call.message.chat.id, text, reply_markup=kb)
+
 @bot.message_handler(commands=["start", "menu"])
 def start(message):
     user_steps.pop(message.from_user.id, None)
@@ -119,8 +223,15 @@ def start(message):
         "أهلاً بك في <b>VELORA-VIP</b> 🌟\n"
         "خدمات طلبات الكاشيرة باللغة العربية.\n\n"
         "اختر الخدمة المطلوبة. جميع الطلبات تبقى قيد المراجعة، ولا تعتبر الموافقة داخل البوت إثباتاً لتحويل مالي.",
-        reply_markup=main_menu()
+        reply_markup=main_menu(message.from_user.id)
     )
+
+@bot.message_handler(commands=["admin"])
+def admin_command(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "هذا القسم مخصص للإدارة فقط.")
+        return
+    send_admin_panel(message.chat.id)
 
 @bot.message_handler(commands=["help"])
 def help_command(message):
