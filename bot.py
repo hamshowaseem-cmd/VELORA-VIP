@@ -534,7 +534,7 @@ def contact(call):
 @bot.callback_query_handler(func=lambda call: call.data == "home")
 def home(call):
     bot.answer_callback_query(call.id)
-    bot.send_message(call.message.chat.id, "القائمة الرئيسية:", reply_markup=main_menu())
+    bot.send_message(call.message.chat.id, "القائمة الرئيسية:", reply_markup=main_menu(call.from_user.id))
 
 @bot.callback_query_handler(func=lambda call: call.data == "cancel")
 def cancel(call):
