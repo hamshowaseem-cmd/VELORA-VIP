@@ -60,16 +60,32 @@ def init_db():
         """)
 
 def main_menu():
+    # أزرار تيليغرام الأصلية؛ لا تسمح واجهة Bot API بتغيير ألوان الأزرار.
     kb = types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        types.InlineKeyboardButton("➕ طلب إيداع", callback_data="new:deposit"),
-        types.InlineKeyboardButton("➖ طلب سحب", callback_data="new:withdraw")
+    kb.row(
+        types.InlineKeyboardButton("⚡ معلومات الحساب", callback_data="account_info"),
+        types.InlineKeyboardButton("💥 جميع العروض", callback_data="offers")
     )
-    kb.add(
+    kb.row(
+        types.InlineKeyboardButton("💳 طلب إيداع", callback_data="new:deposit"),
+        types.InlineKeyboardButton("💸 طلب سحب", callback_data="new:withdraw")
+    )
+    kb.row(
         types.InlineKeyboardButton("👤 إنشاء حساب لاعب", callback_data="player_register"),
-        types.InlineKeyboardButton("📋 طلباتي", callback_data="my_requests")
+        types.InlineKeyboardButton("📋 السجل المالي / طلباتي", callback_data="my_requests")
     )
-    kb.add(types.InlineKeyboardButton("☎️ التواصل مع الإدارة", callback_data="contact"))
+    kb.row(
+        types.InlineKeyboardButton("🎁 كود هدية", callback_data="coming:gift"),
+        types.InlineKeyboardButton("🎁 إهداء رصيد", callback_data="coming:gift_balance")
+    )
+    kb.row(
+        types.InlineKeyboardButton("👥 الإحالات", callback_data="coming:referrals"),
+        types.InlineKeyboardButton("🎡 تدوير العجلة", callback_data="coming:wheel")
+    )
+    kb.row(
+        types.InlineKeyboardButton("📜 دليل المستخدم والشروط", callback_data="coming:guide"),
+        types.InlineKeyboardButton("☎️ مراسلة الدعم", callback_data="contact")
+    )
     return kb
 
 def back_menu():
@@ -103,6 +119,47 @@ def start(message):
 @bot.message_handler(commands=["help"])
 def help_command(message):
     bot.send_message(message.chat.id, "أرسل /start لعرض القائمة الرئيسية. لا ترسل كلمات المرور أو رموز التحقق أو بيانات البطاقات.")
+
+@bot.callback_query_handler(func=lambda call: call.data == "account_info")
+def account_info(call):
+    user = call.from_user
+    username = ("@" + user.username) if user.username else "غير محدد"
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        "⚡ <b>معلومات حسابك في VELORA-VIP</b>\\n"
+        f"الاسم: {safe(user.first_name)}\\n"
+        f"اسم تيليغرام: {safe(username)}\\n"
+        f"رقم تيليغرام: <code>{user.id}</code>\\n\\n"
+        "هذه بيانات تيليغرام فقط، وليست بيانات دخول iChancy.",
+        reply_markup=back_menu()
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data == "offers")
+def offers(call):
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        "💥 <b>العروض</b>\\nلا توجد عروض مفعّلة حالياً. تابع إشعارات البوت لمعرفة العروض المعتمدة.",
+        reply_markup=back_menu()
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("coming:"))
+def coming_soon(call):
+    labels = {
+        "gift": "كود الهدية",
+        "gift_balance": "إهداء الرصيد",
+        "referrals": "الإحالات",
+        "wheel": "تدوير العجلة",
+        "guide": "دليل المستخدم والشروط"
+    }
+    key = call.data.split(":", 1)[1]
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        f"🛠️ <b>{safe(labels.get(key, 'هذه الخدمة'))}</b>\\nهذه الخدمة غير مفعّلة بعد. سنعلن عنها عند تجهيزها.",
+        reply_markup=back_menu()
+    )
 
 @bot.callback_query_handler(func=lambda call: call.data == "player_register")
 def player_register(call):
