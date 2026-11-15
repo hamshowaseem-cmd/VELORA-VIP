@@ -88,6 +88,12 @@ def main_menu():
     )
     return kb
 
+def registration_menu():
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(types.InlineKeyboardButton("🔐 فتح موقع iChancy الرسمي", url="https://ichancy.com/"))
+    kb.add(types.InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="home"))
+    return kb
+
 def back_menu():
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("⬅️ القائمة الرئيسية", callback_data="home"))
@@ -216,8 +222,8 @@ def player_desired_username(message):
         f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\n"
         f"اسم المستخدم المطلوب: <code>{safe(value)}</code>\n"
         "الحالة: قيد مراجعة الإدارة. سيتم إبلاغك بالنتيجة.\n"
-        "لا ترسل كلمة مرور أو رمز تحقق؛ إنشاء الحساب الفعلي يتم فقط عبر إجراء معتمد من الوكيل.",
-        reply_markup=main_menu()
+        "لأمان حسابك، لا ترسل كلمة المرور عبر تيليغرام. افتح موقع iChancy الرسمي واضبط كلمة المرور هناك، ثم انتظر مراجعة الإدارة لإكمال إنشاء الحساب وفق الإجراء المعتمد.",
+        reply_markup=registration_menu()
     )
     admin_kb = types.InlineKeyboardMarkup(row_width=2)
     admin_kb.add(
