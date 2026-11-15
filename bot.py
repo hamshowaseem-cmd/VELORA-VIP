@@ -46,6 +46,18 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS player_registrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                telegram_username TEXT,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                desired_username TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL
+            )
+        """)
 
 def main_menu():
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -54,9 +66,10 @@ def main_menu():
         types.InlineKeyboardButton("➖ طلب سحب", callback_data="new:withdraw")
     )
     kb.add(
-        types.InlineKeyboardButton("📋 طلباتي", callback_data="my_requests"),
-        types.InlineKeyboardButton("☎️ التواصل مع الإدارة", callback_data="contact")
+        types.InlineKeyboardButton("👤 إنشاء حساب لاعب", callback_data="player_register"),
+        types.InlineKeyboardButton("📋 طلباتي", callback_data="my_requests")
     )
+    kb.add(types.InlineKeyboardButton("☎️ التواصل مع الإدارة", callback_data="contact"))
     return kb
 
 def back_menu():
@@ -90,6 +103,115 @@ def start(message):
 @bot.message_handler(commands=["help"])
 def help_command(message):
     bot.send_message(message.chat.id, "أرسل /start لعرض القائمة الرئيسية. لا ترسل كلمات المرور أو رموز التحقق أو بيانات البطاقات.")
+
+@bot.callback_query_handler(func=lambda call: call.data == "player_register")
+def player_register(call):
+    user_steps[call.from_user.id] = {"flow": "player_registration", "step": "player_first_name"}
+    bot.answer_callback_query(call.id)
+    bot.send_message(
+        call.message.chat.id,
+        "👤 <b>طلب إنشاء حساب لاعب</b>\n"
+        "سنرسل بياناتك إلى الإدارة لمراجعتها. هذه الخطوة لا تنشئ حساباً في iChancy تلقائياً.\n\n"
+        "أرسل الاسم الأول فقط:"
+    )
+
+@bot.message_handler(func=lambda m: m.from_user.id in user_steps and user_steps[m.from_user.id].get("step") == "player_first_name", content_types=["text"])
+def player_first_name(message):
+    value = (message.text or "").strip()
+    if not value or len(value) > 60:
+        bot.send_message(message.chat.id, "الاسم الأول غير صالح. أرسله بطول لا يتجاوز 60 حرفاً.")
+        return
+    user_steps[message.from_user.id]["first_name"] = value
+    user_steps[message.from_user.id]["step"] = "player_last_name"
+    bot.send_message(message.chat.id, "أرسل اسم العائلة:")
+
+@bot.message_handler(func=lambda m: m.from_user.id in user_steps and user_steps[m.from_user.id].get("step") == "player_last_name", content_types=["text"])
+def player_last_name(message):
+    value = (message.text or "").strip()
+    if not value or len(value) > 60:
+        bot.send_message(message.chat.id, "اسم العائلة غير صالح. أرسله بطول لا يتجاوز 60 حرفاً.")
+        return
+    user_steps[message.from_user.id]["last_name"] = value
+    user_steps[message.from_user.id]["step"] = "player_desired_username"
+    bot.send_message(message.chat.id, "اختر اسم المستخدم الذي تريده لحساب اللاعب (3 إلى 30 حرفاً، أحرف إنجليزية أو أرقام أو _):")
+
+@bot.message_handler(func=lambda m: m.from_user.id in user_steps and user_steps[m.from_user.id].get("step") == "player_desired_username", content_types=["text"])
+def player_desired_username(message):
+    value = (message.text or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", value):
+        bot.send_message(message.chat.id, "اسم المستخدم غير صالح. استخدم 3 إلى 30 حرفاً إنجليزياً أو رقماً أو _.")
+        return
+    data = user_steps.get(message.from_user.id)
+    user = message.from_user
+    with connect_db() as conn:
+        cur = conn.execute(
+            """INSERT INTO player_registrations
+            (user_id, telegram_username, first_name, last_name, desired_username, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (user.id, user.username, data["first_name"], data["last_name"], value,
+             datetime.now(timezone.utc).isoformat())
+        )
+        registration_id = cur.lastrowid
+    user_steps.pop(user.id, None)
+    bot.send_message(
+        message.chat.id,
+        f"✅ استلمنا طلب تسجيل اللاعب رقم <b>#{registration_id}</b>.\n"
+        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\n"
+        f"اسم المستخدم المطلوب: <code>{safe(value)}</code>\n"
+        "الحالة: قيد مراجعة الإدارة. سيتم إبلاغك بالنتيجة.\n"
+        "لا ترسل كلمة مرور أو رمز تحقق؛ إنشاء الحساب الفعلي يتم فقط عبر إجراء معتمد من الوكيل.",
+        reply_markup=main_menu()
+    )
+    admin_kb = types.InlineKeyboardMarkup(row_width=2)
+    admin_kb.add(
+        types.InlineKeyboardButton("✅ قبول الطلب", callback_data=f"player_decision:approved:{registration_id}"),
+        types.InlineKeyboardButton("❌ رفض الطلب", callback_data=f"player_decision:rejected:{registration_id}")
+    )
+    tg_name = ("@" + user.username) if user.username else "غير متوفر"
+    admin_text = (
+        f"👤 <b>طلب تسجيل لاعب جديد #{registration_id}</b>\n"
+        f"الاسم الأول: {safe(data['first_name'])}\n"
+        f"اسم العائلة: {safe(data['last_name'])}\n"
+        f"اسم المستخدم المطلوب: <code>{safe(value)}</code>\n"
+        f"Telegram: {safe(tg_name)} — ID: <code>{user.id}</code>\n\n"
+        "القرار هنا يحدّث حالة الطلب فقط؛ لا ينشئ حساب iChancy تلقائياً."
+    )
+    try:
+        bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_kb)
+    except Exception:
+        logging.exception("Could not notify admin about player registration")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("player_decision:"))
+def decide_player_registration(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "هذا الإجراء مخصص للإدارة فقط.", show_alert=True)
+        return
+    parts = call.data.split(":")
+    if len(parts) != 3 or parts[1] not in ("approved", "rejected") or not parts[2].isdigit():
+        bot.answer_callback_query(call.id, "طلب غير صالح.", show_alert=True)
+        return
+    status, registration_id = parts[1], int(parts[2])
+    with connect_db() as conn:
+        req = conn.execute("SELECT * FROM player_registrations WHERE id=?", (registration_id,)).fetchone()
+        if not req:
+            bot.answer_callback_query(call.id, "الطلب غير موجود.", show_alert=True)
+            return
+        if req["status"] != "pending":
+            bot.answer_callback_query(call.id, "تمت معالجة هذا الطلب مسبقاً.", show_alert=True)
+            return
+        conn.execute("UPDATE player_registrations SET status=? WHERE id=?", (status, registration_id))
+    message = ("تم قبول طلب التسجيل مبدئياً، وستتواصل معك الإدارة لإكمال الإجراء المعتمد."
+               if status == "approved" else "نعتذر، تم رفض طلب التسجيل. تواصل مع الإدارة للاستفسار.")
+    try:
+        bot.send_message(req["user_id"], f"تحديث طلب التسجيل <b>#{registration_id}</b>: {message}")
+    except Exception:
+        logging.exception("Could not notify player about registration decision")
+    try:
+        bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    except Exception:
+        pass
+    bot.answer_callback_query(call.id, "تم حفظ القرار.")
+    bot.send_message(call.message.chat.id, f"تم تحديث طلب التسجيل #{registration_id}.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("new:"))
 def new_request(call):
