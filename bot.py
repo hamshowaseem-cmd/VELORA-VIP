@@ -127,10 +127,10 @@ def account_info(call):
     bot.answer_callback_query(call.id)
     bot.send_message(
         call.message.chat.id,
-        "⚡ <b>معلومات حسابك في VELORA-VIP</b>\\n"
-        f"الاسم: {safe(user.first_name)}\\n"
-        f"اسم تيليغرام: {safe(username)}\\n"
-        f"رقم تيليغرام: <code>{user.id}</code>\\n\\n"
+        "⚡ <b>معلومات حسابك في VELORA-VIP</b>\n"
+        f"الاسم: {safe(user.first_name)}\n"
+        f"اسم تيليغرام: {safe(username)}\n"
+        f"رقم تيليغرام: <code>{user.id}</code>\n\n"
         "هذه بيانات تيليغرام فقط، وليست بيانات دخول iChancy.",
         reply_markup=back_menu()
     )
@@ -140,7 +140,7 @@ def offers(call):
     bot.answer_callback_query(call.id)
     bot.send_message(
         call.message.chat.id,
-        "💥 <b>العروض</b>\\nلا توجد عروض مفعّلة حالياً. تابع إشعارات البوت لمعرفة العروض المعتمدة.",
+        "💥 <b>العروض</b>\nلا توجد عروض مفعّلة حالياً. تابع إشعارات البوت لمعرفة العروض المعتمدة.",
         reply_markup=back_menu()
     )
 
@@ -157,7 +157,7 @@ def coming_soon(call):
     bot.answer_callback_query(call.id)
     bot.send_message(
         call.message.chat.id,
-        f"🛠️ <b>{safe(labels.get(key, 'هذه الخدمة'))}</b>\\nهذه الخدمة غير مفعّلة بعد. سنعلن عنها عند تجهيزها.",
+        f"🛠️ <b>{safe(labels.get(key, 'هذه الخدمة'))}</b>\nهذه الخدمة غير مفعّلة بعد. سنعلن عنها عند تجهيزها.",
         reply_markup=back_menu()
     )
 
