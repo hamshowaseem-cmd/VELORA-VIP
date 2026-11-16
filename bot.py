@@ -95,13 +95,10 @@ def make_player_username(first_name, conn):
         suffix += 1
     return candidate
 
-def make_player_password(length=14):
-    alphabet = string.ascii_letters + string.digits + "!@#$%_-"
-    while True:
-        password = "".join(secrets.choice(alphabet) for _ in range(length))
-        if (any(x.islower() for x in password) and any(x.isupper() for x in password)
-                and any(x.isdigit() for x in password) and any(x in "!@#$%_-" for x in password)):
-            return password
+def make_player_password():
+    # كلمة المرور الموحدة التي طلبتها الإدارة.
+    # استخدام كلمة واحدة لجميع اللاعبين غير آمن؛ يجب تغييرها إلى كلمة فريدة لكل لاعب.
+    return "W1234"
 
 def main_menu(user_id=None):
     # أزرار تيليغرام الأصلية؛ لا تسمح واجهة Bot API بتغيير ألوان الأزرار.
@@ -332,7 +329,7 @@ def player_register(call):
     bot.send_message(
         call.message.chat.id,
         "👤 <b>طلب التسجيل في VELORA VIP</b>\n"
-        "سيُنشئ البوت اسم مستخدم بصيغة الاسم_velora وكلمة مرور قوية خاصة بك. "
+        "سيُنشئ البوت اسم مستخدم بصيغة الاسم_velora ويعطيك كلمة المرور الموحدة المعتمدة. "
         "ستستخدمهما بنفسك عند التسجيل في موقع iChancy الرسمي.\n\n"
         "أرسل الاسم الأول:"
     )
@@ -374,7 +371,7 @@ def player_last_name(message):
         f"✅ <b>جهزنا بيانات التسجيل رقم #{registration_id}</b>\n"
         f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\n"
         f"اسم المستخدم: <code>{safe(desired_username)}</code>\n"
-        f"كلمة المرور المؤقتة: <code>{safe(password)}</code>\n\n"
+        f"كلمة المرور الموحدة: <code>{safe(password)}</code>\n\n"
         "احفظ كلمة المرور ولا تشاركها مع أحد. افتح موقع iChancy الرسمي وسجّل بنفسك بهذه البيانات، "
         "إذا كانت شروط الموقع تسمح باسم المستخدم وكلمة المرور. غيّر كلمة المرور بعد الدخول إن أمكن. "
         "هذا البوت لا ينشئ الحساب داخل iChancy ولا يتحقق من قبول الاسم هناك.",
