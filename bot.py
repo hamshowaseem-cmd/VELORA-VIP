@@ -14,6 +14,8 @@ from telebot import types
 TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
 ADMIN_ID_RAW = (os.getenv("ADMIN_TELEGRAM_ID") or "6012187178").strip()
 DB_PATH = os.getenv("DATABASE_PATH", "velora.db")
+SHAM_CASH_WALLET_CODE = (os.getenv("SHAM_CASH_WALLET_CODE") or "").strip()
+SHAM_CASH_WALLET_NAME = (os.getenv("SHAM_CASH_WALLET_NAME") or "").strip()
 
 if not TOKEN or ":" not in TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN غير مضبوط. أضف رمز BotFather الصحيح في إعدادات الاستضافة.")
@@ -393,6 +395,24 @@ def new_request(call):
     user_steps[call.from_user.id] = {"kind": kind}
     bot.answer_callback_query(call.id)
     label = "الإيداع" if kind == "deposit" else "السحب"
+    if kind == "deposit":
+        if SHAM_CASH_WALLET_CODE:
+            owner_line = f"\nاسم المستفيد: <b>{safe(SHAM_CASH_WALLET_NAME)}</b>" if SHAM_CASH_WALLET_NAME else ""
+            bot.send_message(
+                call.message.chat.id,
+                "💳 <b>بيانات الإيداع عبر شام كاش</b>\n"
+                f"كود المحفظة: <code>{safe(SHAM_CASH_WALLET_CODE)}</code>"
+                f"{owner_line}\n\n"
+                "يمكنك نسخ الكود بالضغط عليه مطولاً. أرسل التحويل بعد التأكد من صحة بيانات المستفيد، ثم أكمل طلب الإيداع.\n"
+                "لا ترسل كلمة مرور أو رمز تحقق.",
+                reply_markup=back_menu()
+            )
+        else:
+            bot.send_message(
+                call.message.chat.id,
+                "💳 لم تُضبط بيانات شام كاش بعد. تواصل مع الإدارة قبل إجراء أي تحويل.",
+                reply_markup=back_menu()
+            )
     bot.send_message(call.message.chat.id, f"اختر عملة طلب {label}:", reply_markup=currency_menu())
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("currency:"))
@@ -420,6 +440,18 @@ def get_amount(message):
         return
     user_steps[message.from_user.id]["amount"] = amount_text
     user_steps[message.from_user.id]["step"] = "note"
+    data = user_steps[message.from_user.id]
+    if data.get("kind") == "deposit":
+        bonus = (Decimal(amount_text) * Decimal("0.15")).quantize(Decimal("0.01"))
+        total = Decimal(amount_text) + bonus
+        bot.send_message(
+            message.chat.id,
+            "🎁 <b>مكافأة التعبئة</b>\n"
+            f"مبلغ التعبئة: <b>{safe(amount_text)} {data['currency']}</b>\n"
+            f"مكافأة 15%: <b>{safe(format(bonus, 'f'))} {data['currency']}</b>\n"
+            f"الإجمالي بعد المكافأة: <b>{safe(format(total, 'f'))} {data['currency']}</b>\n"
+            "لا يوجد حد أدنى. تُراجع العملية أولاً، ولا يُضاف أي رصيد تلقائياً من هذا البوت."
+        )
     bot.send_message(message.chat.id, "أرسل ملاحظة مختصرة أو رقم مرجع إن وجد، أو أرسل - إذا لا توجد ملاحظة. لا ترسل كلمات مرور أو رموز تحقق.")
 
 @bot.message_handler(func=lambda m: m.from_user.id in user_steps and user_steps[m.from_user.id].get("step") == "note", content_types=["text"])
