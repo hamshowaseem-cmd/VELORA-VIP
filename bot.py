@@ -582,3 +582,5 @@ if __name__ == "__main__":
     init_db()
     logging.info("VELORA-VIP is starting")
     bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+
+# نشر تلقائي: تفعيل ربط FadeHost مع GitHub بعد تحديث إعدادات النشر.
