@@ -2,6 +2,9 @@ import os
 import sys
 import re
 import html
+import secrets
+import string
+import unicodedata
 import sqlite3
 import logging
 from datetime import datetime, timezone
@@ -60,6 +63,45 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         """)
+
+
+def make_player_username(first_name, conn):
+    # تحويل مبسط للاسم العربي إلى أحرف لاتينية ثم إضافة اللاحقة المطلوبة.
+    arabic = {
+        "ا":"a","أ":"a","إ":"i","آ":"a","ب":"b","ت":"t","ث":"th","ج":"j",
+        "ح":"h","خ":"kh","د":"d","ذ":"th","ر":"r","ز":"z","س":"s","ش":"sh",
+        "ص":"s","ض":"d","ط":"t","ظ":"z","ع":"a","غ":"gh","ف":"f","ق":"q",
+        "ك":"k","ل":"l","م":"m","ن":"n","ه":"h","و":"w","ي":"y","ى":"a",
+        "ة":"h","ؤ":"w","ئ":"y"
+    }
+    parts = []
+    for char in first_name.lower():
+        if char in arabic:
+            parts.append(arabic[char])
+        elif char.isascii() and char.isalnum():
+            parts.append(char)
+        elif char.isspace() or char in "-_":
+            parts.append("_")
+    base = re.sub(r"_+", "_", "".join(parts)).strip("_") or "player"
+    base = base[:20].rstrip("_") or "player"
+    candidate = f"{base}_velora"
+    suffix = 2
+    while conn.execute(
+        "SELECT 1 FROM player_registrations WHERE lower(desired_username)=lower(?) LIMIT 1",
+        (candidate,)
+    ).fetchone():
+        tail = str(suffix)
+        candidate = f"{base[:max(1, 20-len(tail))]}_velora{tail}"
+        suffix += 1
+    return candidate
+
+def make_player_password(length=14):
+    alphabet = string.ascii_letters + string.digits + "!@#$%_-"
+    while True:
+        password = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (any(x.islower() for x in password) and any(x.isupper() for x in password)
+                and any(x.isdigit() for x in password) and any(x in "!@#$%_-" for x in password)):
+            return password
 
 def main_menu(user_id=None):
     # أزرار تيليغرام الأصلية؛ لا تسمح واجهة Bot API بتغيير ألوان الأزرار.
@@ -282,13 +324,17 @@ def coming_soon(call):
 
 @bot.callback_query_handler(func=lambda call: call.data == "player_register")
 def player_register(call):
-    user_steps[call.from_user.id] = {"flow": "player_registration", "step": "player_first_name"}
     bot.answer_callback_query(call.id)
+    if call.message.chat.type != "private":
+        bot.send_message(call.message.chat.id, "يرجى فتح البوت في محادثة خاصة لإتمام التسجيل بأمان.")
+        return
+    user_steps[call.from_user.id] = {"flow": "player_registration", "step": "player_first_name"}
     bot.send_message(
         call.message.chat.id,
-        "👤 <b>طلب إنشاء حساب لاعب</b>\n"
-        "سنرسل بياناتك إلى الإدارة لمراجعتها. هذه الخطوة لا تنشئ حساباً في iChancy تلقائياً.\n\n"
-        "أرسل الاسم الأول فقط:"
+        "👤 <b>طلب التسجيل في VELORA VIP</b>\n"
+        "سيُنشئ البوت اسم مستخدم بصيغة الاسم_velora وكلمة مرور قوية خاصة بك. "
+        "ستستخدمهما بنفسك عند التسجيل في موقع iChancy الرسمي.\n\n"
+        "أرسل الاسم الأول:"
     )
 
 @bot.message_handler(func=lambda m: m.from_user.id in user_steps and user_steps[m.from_user.id].get("step") == "player_first_name", content_types=["text"])
@@ -308,34 +354,30 @@ def player_last_name(message):
         bot.send_message(message.chat.id, "اسم العائلة غير صالح. أرسله بطول لا يتجاوز 60 حرفاً.")
         return
     user_steps[message.from_user.id]["last_name"] = value
-    user_steps[message.from_user.id]["step"] = "player_desired_username"
-    bot.send_message(message.chat.id, "اختر اسم المستخدم الذي تريده لحساب اللاعب (3 إلى 30 حرفاً، أحرف إنجليزية أو أرقام أو _):")
-
-@bot.message_handler(func=lambda m: m.from_user.id in user_steps and user_steps[m.from_user.id].get("step") == "player_desired_username", content_types=["text"])
-def player_desired_username(message):
-    value = (message.text or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", value):
-        bot.send_message(message.chat.id, "اسم المستخدم غير صالح. استخدم 3 إلى 30 حرفاً إنجليزياً أو رقماً أو _.")
-        return
-    data = user_steps.get(message.from_user.id)
+    user_steps[message.from_user.id]["step"] = "player_confirm_details"
+    data = user_steps[message.from_user.id]
     user = message.from_user
     with connect_db() as conn:
+        desired_username = make_player_username(data["first_name"], conn)
         cur = conn.execute(
             """INSERT INTO player_registrations
             (user_id, telegram_username, first_name, last_name, desired_username, created_at)
             VALUES (?, ?, ?, ?, ?, ?)""",
-            (user.id, user.username, data["first_name"], data["last_name"], value,
+            (user.id, user.username, data["first_name"], data["last_name"], desired_username,
              datetime.now(timezone.utc).isoformat())
         )
         registration_id = cur.lastrowid
+    password = make_player_password()
     user_steps.pop(user.id, None)
     bot.send_message(
         message.chat.id,
-        f"✅ استلمنا طلب تسجيل اللاعب رقم <b>#{registration_id}</b>.\n"
-        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\n"
-        f"اسم المستخدم المطلوب: <code>{safe(value)}</code>\n"
-        "الحالة: قيد مراجعة الإدارة. سيتم إبلاغك بالنتيجة.\n"
-        "لأمان حسابك، لا ترسل كلمة المرور عبر تيليغرام. افتح موقع iChancy الرسمي واضبط كلمة المرور هناك، ثم انتظر مراجعة الإدارة لإكمال إنشاء الحساب وفق الإجراء المعتمد.",
+        f"✅ <b>جهزنا بيانات التسجيل رقم #{registration_id}</b>\\n"
+        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\\n"
+        f"اسم المستخدم: <code>{safe(desired_username)}</code>\\n"
+        f"كلمة المرور المؤقتة: <code>{safe(password)}</code>\\n\\n"
+        "احفظ كلمة المرور ولا تشاركها مع أحد. افتح موقع iChancy الرسمي وسجّل بنفسك بهذه البيانات، "
+        "إذا كانت شروط الموقع تسمح باسم المستخدم وكلمة المرور. غيّر كلمة المرور بعد الدخول إن أمكن. "
+        "هذا البوت لا ينشئ الحساب داخل iChancy ولا يتحقق من قبول الاسم هناك.",
         reply_markup=registration_menu()
     )
     admin_kb = types.InlineKeyboardMarkup(row_width=2)
@@ -345,12 +387,11 @@ def player_desired_username(message):
     )
     tg_name = ("@" + user.username) if user.username else "غير متوفر"
     admin_text = (
-        f"👤 <b>طلب تسجيل لاعب جديد #{registration_id}</b>\n"
-        f"الاسم الأول: {safe(data['first_name'])}\n"
-        f"اسم العائلة: {safe(data['last_name'])}\n"
-        f"اسم المستخدم المطلوب: <code>{safe(value)}</code>\n"
-        f"Telegram: {safe(tg_name)} — ID: <code>{user.id}</code>\n\n"
-        "القرار هنا يحدّث حالة الطلب فقط؛ لا ينشئ حساب iChancy تلقائياً."
+        f"👤 <b>طلب تسجيل لاعب جديد #{registration_id}</b>\\n"
+        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\\n"
+        f"اسم المستخدم المقترح: <code>{safe(desired_username)}</code>\\n"
+        f"Telegram: {safe(tg_name)} — ID: <code>{user.id}</code>\\n\\n"
+        "اللاعب هو من يُدخل البيانات بنفسه في موقع iChancy. لا تُرسل كلمة المرور إلى الإدارة."
     )
     try:
         bot.send_message(ADMIN_ID, admin_text, reply_markup=admin_kb)
