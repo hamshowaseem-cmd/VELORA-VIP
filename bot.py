@@ -371,10 +371,10 @@ def player_last_name(message):
     user_steps.pop(user.id, None)
     bot.send_message(
         message.chat.id,
-        f"✅ <b>جهزنا بيانات التسجيل رقم #{registration_id}</b>\\n"
-        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\\n"
-        f"اسم المستخدم: <code>{safe(desired_username)}</code>\\n"
-        f"كلمة المرور المؤقتة: <code>{safe(password)}</code>\\n\\n"
+        f"✅ <b>جهزنا بيانات التسجيل رقم #{registration_id}</b>\n"
+        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\n"
+        f"اسم المستخدم: <code>{safe(desired_username)}</code>\n"
+        f"كلمة المرور المؤقتة: <code>{safe(password)}</code>\n\n"
         "احفظ كلمة المرور ولا تشاركها مع أحد. افتح موقع iChancy الرسمي وسجّل بنفسك بهذه البيانات، "
         "إذا كانت شروط الموقع تسمح باسم المستخدم وكلمة المرور. غيّر كلمة المرور بعد الدخول إن أمكن. "
         "هذا البوت لا ينشئ الحساب داخل iChancy ولا يتحقق من قبول الاسم هناك.",
@@ -387,10 +387,10 @@ def player_last_name(message):
     )
     tg_name = ("@" + user.username) if user.username else "غير متوفر"
     admin_text = (
-        f"👤 <b>طلب تسجيل لاعب جديد #{registration_id}</b>\\n"
-        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\\n"
-        f"اسم المستخدم المقترح: <code>{safe(desired_username)}</code>\\n"
-        f"Telegram: {safe(tg_name)} — ID: <code>{user.id}</code>\\n\\n"
+        f"👤 <b>طلب تسجيل لاعب جديد #{registration_id}</b>\n"
+        f"الاسم: {safe(data['first_name'])} {safe(data['last_name'])}\n"
+        f"اسم المستخدم المقترح: <code>{safe(desired_username)}</code>\n"
+        f"Telegram: {safe(tg_name)} — ID: <code>{user.id}</code>\n\n"
         "اللاعب هو من يُدخل البيانات بنفسه في موقع iChancy. لا تُرسل كلمة المرور إلى الإدارة."
     )
     try:
